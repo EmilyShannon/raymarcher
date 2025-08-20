@@ -1,6 +1,14 @@
-attribute vec2 a_position;
-varying vec2 v_uv;
+precision highp float;
+
+uniform mat4 u_model;
+uniform mat4 u_view;
+uniform mat4 u_projection;
+
+attribute vec3 a_position;
+attribute vec3 a_color;
+varying vec3 v_color;
+
 void main() {
-    v_uv = a_position * 0.5 + 0.5; // map from [-1,1] to [0,1]
-    gl_Position = vec4(a_position, 0.0, 1.0);
+    v_color = a_color;
+    gl_Position = u_projection * u_view * u_model * vec4(a_position, 1.0);
 }
