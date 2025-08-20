@@ -15,7 +15,7 @@ export default function RaymarchCanvas() {
         currentCanvas.width = currentCanvas.clientWidth * dpr;
         currentCanvas.height = currentCanvas.clientHeight * dpr;
 
-        const gl = currentCanvas.getContext("webgl", { depth: true });
+        const gl = currentCanvas.getContext("webgl2", { depth: true });
         if (!gl) {
             console.error("WebGL not supported in this browser.");
             return;
@@ -74,62 +74,93 @@ export default function RaymarchCanvas() {
         gl.enable(gl.DEPTH_TEST);
 
         // Create a cube, with colors
-        // 6 faces, 2 triangles per face, 3 vertices per triangle
-        const positions = [
-          -1, -1, 1,  0, 0, 1,
-          1, -1, 1,  0, 0, 1,
-          -1,  1, 1,  0, 0, 1,
-          -1,  1, 1,  0, 0, 1,
-          1, -1, 1,  0, 0, 1,
-          1,  1, 1,  0, 0, 1,
+        // Each vertex: x,y,z + r,g,b
+        const positions = new Float32Array([
+          // front
+          -1,-1, 1,  1,0,0,
+          1,-1, 1,  0,1,0,
+          -1, 1, 1,  0,0,1,
+          -1, 1, 1,  0,0,1,
+          1,-1, 1,  0,1,0,
+          1, 1, 1,  1,1,0,
+          // back
+          -1,-1,-1,  1,0,1,
+          1,-1,-1,  0,1,1,
+          -1, 1,-1,  1,1,1,
+          -1, 1,-1,  1,1,1,
+          1,-1,-1,  0,1,1,
+          1, 1,-1,  1,0,0,
+          // left
+          -1,-1,-1,  1,0,0,
+          -1, 1,-1,  0,1,0,
+          -1,-1, 1,  0,0,1,
+          -1,-1, 1,  0,0,1,
+          -1, 1,-1,  0,1,0,
+          -1, 1, 1,  1,1,0,
+          // right
+          1,-1,-1,  1,0,1,
+          1, 1,-1,  0,1,1,
+          1,-1, 1,  1,1,1,
+          1,-1, 1,  1,1,1,
+          1, 1,-1,  0,1,1,
+          1, 1, 1,  1,0,0,
+          // top
+          -1, 1, 1,  1,0,0,
+          1, 1, 1,  0,1,0,
+          -1, 1,-1,  0,0,1,
+          -1, 1,-1,  0,0,1,
+          1, 1, 1,  0,1,0,
+          1, 1,-1,  1,1,0,
+          // bottom
+          -1,-1, 1,  1,0,1,
+          1,-1, 1,  0,1,1,
+          -1,-1,-1,  1,1,1,
+          -1,-1,-1,  1,1,1,
+          1,-1, 1,  0,1,1,
+          1,-1,-1,  1,0,0,
+        ]);
 
-          -1, -1, -1,  0, 1, 1,
-          1, -1, -1,  0, 1, 1,
-          -1,  1, -1,  0, 1, 1,
-          -1,  1, -1,  0, 1, 1,
-          1, -1, -1,  0, 1, 1,
-          1,  1, -1,  0, 1, 1,
+        // UVs (36 vertices × 2)
+        const uvs = new Float32Array([
+          // front
+          0,0,  1,0,  0,1,  0,1,  1,0,  1,1,
+          // back
+          0,0,  1,0,  0,1,  0,1,  1,0,  1,1,
+          // left
+          0,0,  0,1,  1,0,  1,0,  0,1,  1,1,
+          // right
+          0,0,  0,1,  1,0,  1,0,  0,1,  1,1,
+          // top
+          0,0,  1,0,  0,1,  0,1,  1,0,  1,1,
+          // bottom
+          0,0,  1,0,  0,1,  0,1,  1,0,  1,1,
+        ]);
 
-          -1, -1, -1,  0, 0, 0,
-          1, -1, -1,  0, 0, 0,
-          -1,  1, -1,  0, 0, 0,
-          -1,  1, -1,  0, 0, 0,
-          1, -1, -1,  0, 0, 0,
-          1,  1, -1,  0, 0, 0,
 
-          1,  1,  1,  1, 0, 1,
-          1, -1,  1,  1, 0, 1,
-          1, -1, -1,  1, 0, 1,
-          1,  1, -1,  1, 0, 1,
-          1,  1,  1,  1, 0, 1,
-          1, -1, -1,  1, 0, 1,
+        const vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
 
-          1,  1, -1,  1, 0, 0,
-          1, -1, -1,  1, 0, 0,
-          1, -1,  1,  1, 0, 0,
-          1,  1,  1,  1, 0, 0,
-          1,  1, -1,  1, 0, 0,
-          1, -1, -1,  1, 0, 0,
-
-          1,  1, -1,  1, 1, 1,
-          1, -1, -1,  1, 1, 1,
-          1, -1,  1,  1, 1, 1,
-          1,  1,  1,  1, 1, 1,
-          1,  1, -1,  1, 1, 1,
-          1, -1, -1,  1, 1, 1,
-
-        ];
-
+        // positions + colors (interleaved)
         const positionBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
 
-        const aPositionLoc = gl.getAttribLocation(program, "a_position");
-        gl.enableVertexAttribArray(aPositionLoc);
-        gl.vertexAttribPointer(aPositionLoc, 3, gl.FLOAT, false, 24, 0);
-        const aColorLoc = gl.getAttribLocation(program, "a_color");
-        gl.enableVertexAttribArray(aColorLoc);
-        gl.vertexAttribPointer(aColorLoc, 3, gl.FLOAT, false, 24, 12);
+        const aPosLoc = gl.getAttribLocation(program, "a_position");
+        gl.enableVertexAttribArray(aPosLoc);
+        gl.vertexAttribPointer(aPosLoc, 3, gl.FLOAT, false, 24, 0);
+
+        const aColLoc = gl.getAttribLocation(program, "a_color");
+        gl.enableVertexAttribArray(aColLoc);
+        gl.vertexAttribPointer(aColLoc, 3, gl.FLOAT, false, 24, 12);
+
+        // UV buffer
+        const uvBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, uvBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW);
+
+        const aUvLoc = gl.getAttribLocation(program, "a_uv");
+        gl.enableVertexAttribArray(aUvLoc);
+        gl.vertexAttribPointer(aUvLoc, 2, gl.FLOAT, false, 0, 0);
 
         const modelLoc = gl.getUniformLocation(program, "u_model");
         const viewLoc = gl.getUniformLocation(program, "u_view");
@@ -143,15 +174,15 @@ export default function RaymarchCanvas() {
         mat4.rotateZ(model, model, Math.PI / 4); // Rotate the cube
         mat4.lookAt(view, [5, 5, 5], [0, 0, 0], [0, 1, 0]);
         mat4.perspective(projection, Math.PI / 4, gl.drawingBufferWidth / gl.drawingBufferHeight, 1, 1000);
-
         gl.uniformMatrix4fv(modelLoc, false, model);
         gl.uniformMatrix4fv(viewLoc, false, view);
         gl.uniformMatrix4fv(projectionLoc, false, projection);
 
         // Finally, render the scene
+        let animationId;
         const draw = () => {
-          requestAnimationFrame(draw);
-          mat4.rotateY(model, model, 0.1, [1, 0, 1]); // Rotate the cube
+          animationId = requestAnimationFrame(draw);
+          mat4.rotateY(model, model, 0.1); // Rotate the cube
           gl.uniformMatrix4fv(modelLoc, false, model);
           gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
           gl.drawArrays(gl.TRIANGLES, 0, 36);
@@ -159,6 +190,7 @@ export default function RaymarchCanvas() {
         draw();
         // Cleanup 
         return () => {
+          cancelAnimationFrame(animationId);
           gl.deleteBuffer(positionBuffer);
           gl.deleteProgram(program);
           gl.deleteShader(vertexShader);
