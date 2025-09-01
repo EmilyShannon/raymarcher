@@ -2,6 +2,7 @@ import {useRef, useEffect} from "react";
 import vertexShaderSrc from './shader/vertex.glsl?raw';
 import fragmentShaderSrc from './shader/fragment.glsl?raw';
 import {mat4} from 'gl-matrix';
+import matcapSrc from '/matcap/matcap_img_1.jpg';
 
 export default function RaymarchCanvas() {
     const canvasRef = useRef(null);
@@ -91,10 +92,50 @@ export default function RaymarchCanvas() {
         gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, quadVerts, gl.STATIC_DRAW);
 
+        // set resolution uniform
+        const resLoc = gl.getUniformLocation(program, "u_resolution");
+
+        // texture setup
+        let texture;
+        const matcapImage = new Image();
+        matcapImage.src = matcapSrc; 
+        matcapImage.onload = () => {
+          texture = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, texture);
+
+          gl.texImage2D(
+            gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, matcapImage
+          );
+
+          // set texture parameters
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+          // create texture uniform
+          const matcapLoc = gl.getUniformLocation(program, "u_matcapTexture");
+          // sampler uses texture unit 0
+          gl.uniform1i(matcapLoc, 0); 
+        };
+
+        matcapImage.onerror = (e) => {
+          console.error("Texture image failed to load", e);
+        };
+
+        // set the resolution so that image can be scaled to aspect ratio
+        const width = gl.drawingBufferWidth;
+        const height = gl.drawingBufferHeight;
+        const aspectX = width / height; 
+        const aspectY = height / width; 
+        gl.uniform4f(resLoc, width, height, aspectX, aspectY);
+
+        // set the location of the vertex positions 
         const aPosLoc = gl.getAttribLocation(program, "a_position");
         gl.enableVertexAttribArray(aPosLoc);
         gl.vertexAttribPointer(aPosLoc, 2, gl.FLOAT, false, 0, 0);
 
+        // set locations of camera and MVP matrices and set their values
         const modelLoc = gl.getUniformLocation(program, "u_model");
         const viewLoc = gl.getUniformLocation(program, "u_view");
         const projectionLoc = gl.getUniformLocation(program, "u_projection");
@@ -103,17 +144,24 @@ export default function RaymarchCanvas() {
         const view = mat4.create();
         const projection = mat4.create();
 
-        const cameraPosition = [0, 0, -10];
+        const cameraPosition = [3, 0, -2];
         const camPosLoc = gl.getUniformLocation(program, "u_cameraPosition");
         gl.uniform3fv(camPosLoc, cameraPosition);
 
-        // set up the MVP (model, view, perspective) matrices
         mat4.lookAt(view, cameraPosition, [0, 0, 0], [0, 1, 0]);
-        mat4.perspective(projection, Math.PI / 4, gl.drawingBufferWidth / gl.drawingBufferHeight, 1, 1000);
+        mat4.perspective(projection, Math.PI / 1.5, gl.drawingBufferWidth / gl.drawingBufferHeight, 0.1, 1000);
 
+        // set MVP inverses
         gl.uniformMatrix4fv(modelLoc, false, model);
         gl.uniformMatrix4fv(viewLoc, false, view);
         gl.uniformMatrix4fv(projectionLoc, false, projection);
+
+        const uInvModelLoc = gl.getUniformLocation(program, "u_invModel");
+        const uInvViewLoc = gl.getUniformLocation(program, "u_invView");
+        const uInvProjLoc = gl.getUniformLocation(program, "u_invProjection");
+
+        const invModel = mat4.create();
+        mat4.invert(invModel, model);
 
         const invView = mat4.create();
         mat4.invert(invView, view);
@@ -121,21 +169,43 @@ export default function RaymarchCanvas() {
         const invProj = mat4.create();
         mat4.invert(invProj, projection);
 
-        const uInvViewLoc = gl.getUniformLocation(program, "u_invView");
+        gl.uniformMatrix4fv(uInvModelLoc, false, invModel);
         gl.uniformMatrix4fv(uInvViewLoc, false, invView);
-
-        const uInvProjLoc = gl.getUniformLocation(program, "u_invProjection");
         gl.uniformMatrix4fv(uInvProjLoc, false, invProj);
 
         // Finally, render the scene
         const draw = () => {
           gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+          // bind texture
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, texture);
           gl.drawArrays(gl.TRIANGLES, 0, 6);
         }
         draw();
 
+        // animation loop - rotate and redraw
+        let animationFrameId;
+        let angle = 0;
+        let renderLoop = () => {
+          angle += 0.025;
+          mat4.identity(model);
+          mat4.rotate(model, model, angle, [1, 0, 0]);
+          gl.uniformMatrix4fv(modelLoc, false, model);
+          // also update the inverse for SDF
+          const invModel = mat4.create();
+          mat4.invert(invModel, model);
+          gl.uniformMatrix4fv(uInvModelLoc, false, invModel);
+          draw();
+          animationFrameId = requestAnimationFrame(renderLoop);
+        }
+
+        renderLoop();
+        
         // Cleanup 
         return () => {
+          if (animationFrameId) {
+            cancelAnimationFrame(animationFrameId);
+          }
           gl.deleteBuffer(quadBuffer);
           gl.deleteProgram(program);
           gl.deleteShader(vertexShader);

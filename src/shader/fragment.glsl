@@ -2,6 +2,7 @@
 precision highp float;
 
 uniform vec4 u_resolution;
+uniform sampler2D u_matcapTexture;
 
 in vec2 v_uv;
 in vec3 v_cameraPosition;
@@ -10,16 +11,34 @@ out vec4 fragColor;
 uniform mat4 u_invModel;
 uniform mat4 u_invView;
 uniform mat4 u_invProjection;
-uniform vec3 u_cameraPosition;
 
 float PI = 3.1415926535897932384626433832795;
+
+vec2 matcap(vec3 eye, vec3 normal) {
+    vec3 reflected = reflect(eye, normal);
+    float m = 2.8284271247461903 * sqrt(reflected.z+1.0);
+    return reflected.xy / m + 0.5;
+}
 
 float signedDistanceSphere(vec3 p, float r) {
     return length(p) - r;
 }
 
+float signedDistanceBox(vec3 p, vec3 b) {
+    vec3 q = abs(p) - b;
+    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+}
+
+// polynomial smooth min
+float smoothMin(float a, float b, float k) {
+    float h = clamp(0.5 + 0.5*(b-a)/k, 0.0, 1.0);
+    return mix(b, a, h) - k*h*(1.0 - h);
+}
+
 float map(vec3 p) {
-    return signedDistanceSphere(p, 2.0);
+    float sphereDist = signedDistanceSphere(p, 1.5);
+    float boxDist = signedDistanceBox(p, vec3(1.0));
+    return smoothMin(boxDist, sphereDist, 0.4);
 }
 
 vec3 computeNormal(vec3 p) {
@@ -44,8 +63,12 @@ void main() {
     vec4 view = u_invProjection * clip;
     view /= view.w; 
 
-    // convert to world coords 
-    vec3 rayDirection = normalize((u_invView * vec4(view.xyz, 0.0)).xyz);
+    // convert to world space
+    vec4 world = u_invView * view;
+    world /= world.w;
+
+    // the ray direction in view space is the view position - camera position (which is the origin in view space)
+    vec3 rayDirection = normalize(world.xyz - v_cameraPosition);
 
     // raymarching
     float t = 0.0;
@@ -55,7 +78,9 @@ void main() {
     for (int i=0;i<256;++i) {
 
         vec3 p = v_cameraPosition + rayDirection * t;
-        float h = map(p);
+        // transform world point into model space
+        vec3 pModel = (u_invModel * vec4(p, 1.0)).xyz;
+        float h = map(pModel);
 
         // hit the surface
         if (h < 0.001) {
@@ -75,14 +100,14 @@ void main() {
     // compute the normal and color for the hit point
     if (t < tMax) {
         vec3 p = v_cameraPosition + rayDirection * t;
-        vec3 normal = computeNormal(p);
-
-        vec3 lightDir = normalize(vec3(1.0, 1.0, -1.0));
-        float diffuse = max(dot(normal, lightDir), 0.0);
-        
-        // simple Lambertian color
-        color = vec3(diffuse);
-    }
+        // transform world point into model space
+        vec3 pModel = (u_invModel * vec4(p, 1.0)).xyz;
+        vec3 normalModel = computeNormal(pModel);
+        // transform normal back to world space using inverse transpose
+        vec3 normal = normalize((transpose(u_invModel) * vec4(normalModel, 0.0)).xyz);
+        // map the texture to the sphere using matcap
+        vec2 matcapUV = matcap(rayDirection, normal);
+        color = texture(u_matcapTexture, matcapUV).rgb;
 
     fragColor = vec4(color, 1.0);
 }
